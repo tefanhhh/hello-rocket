@@ -1,73 +1,25 @@
 #[macro_use]
 extern crate rocket;
+extern crate diesel;
+extern crate dotenv;
 
-use rocket::serde::{json::Json, Deserialize, Serialize};
-use rocket::State;
-use std::collections::HashMap;
-use std::sync::Mutex;
-
-#[derive(Serialize, Deserialize, Clone)]
-struct Item {
-    id: usize,
-    name: String,
-}
-
-type ItemStore = Mutex<HashMap<usize, Item>>;
-
-#[post("/items", format = "json", data = "<item>")]
-fn create_item(item: Json<Item>, store: &State<ItemStore>) -> Json<Item> {
-    let mut items = store.lock().unwrap();
-    items.insert(item.id, item.clone().into_inner());
-    item
-}
-
-#[get("/items/<id>")]
-fn get_item(id: usize, store: &State<ItemStore>) -> Option<Json<Item>> {
-    let items = store.lock().unwrap();
-    items.get(&id).map(|item| Json(item.clone()))
-}
-
-#[get("/items")]
-fn get_items(store: &State<ItemStore>) -> Json<Vec<Item>> {
-    let items = store.lock().unwrap();
-    Json(items.values().cloned().collect())
-}
-
-#[put("/items/<id>", format = "json", data = "<item>")]
-fn update_item(id: usize, item: Json<Item>, store: &State<ItemStore>) -> Option<Json<Item>> {
-    let mut items = store.lock().unwrap();
-    if items.contains_key(&id) {
-        items.insert(id, item.clone().into_inner());
-        Some(item)
-    } else {
-        None
-    }
-}
-
-#[delete("/items/<id>")]
-fn delete_item(id: usize, store: &State<ItemStore>) -> Option<Json<Item>> {
-    let mut items = store.lock().unwrap();
-    items.remove(&id).map(|item| Json(item))
-}
-
-#[get("/")]
-fn index() -> &'static str {
-    "Hello, world!"
-}
+use dotenv::dotenv;
+use rocket::config::Config;
+use rocket::{Build, Rocket};
 
 #[launch]
-fn rocket() -> _ {
-    rocket::build()
-        .manage(Mutex::new(HashMap::<usize, Item>::new()))
-        .mount(
-            "/",
-            routes![
-                index,
-                create_item,
-                get_item,
-                get_items,
-                update_item,
-                delete_item
-            ],
-        )
+fn rocket() -> Rocket<Build> {
+    dotenv().ok(); // Load environment variables from the .env file
+
+    let port = std::env::var("PORT")
+        .unwrap_or_else(|_| "8000".to_string()) // Default to 8000 if PORT is not set
+        .parse::<u16>()
+        .unwrap_or(8000); // Fallback to 8000 if parsing fails
+
+    let config = Config {
+        port,
+        ..Config::default() // Use default values for other settings
+    };
+
+    rocket::custom(config) // Return the Rocket instance without `.launch()`
 }
